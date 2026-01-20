@@ -39,6 +39,12 @@ async def run_server():
                 # 서버는 1 증가시킨 숫자를 응답
                 server_number = client_number + 1
 
+                # 서버가 보내는 숫자가 3의 배수면 알림 (Push!)
+                if server_number % 3 == 0:
+                    alert = f"🎉 {server_number}은(는) 3의 배수입니다!"
+                    print(f"[서버] 서버 → 클라이언트 #{client_num}: {alert} (서버가 먼저 Push!)")
+                    await ws.send(json.dumps({'type': 'alert', 'msg': alert, 'number': server_number}))
+
                 print(f"[서버] 서버 → 클라이언트 #{client_num}: 숫자 {server_number}")
                 await ws.send(json.dumps({'type': 'number', 'number': server_number}))
 
