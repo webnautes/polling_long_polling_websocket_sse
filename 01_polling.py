@@ -17,6 +17,7 @@ def run_server():
 
     app = Flask(__name__)
     message_count = 0
+    connection_count = 0  # 연결 횟수 카운터
     clients = {}  # client_id -> last_seen_time
     client_timeout = 5  # 5초 동안 요청 없으면 접속해제로 간주
 
@@ -39,22 +40,24 @@ def run_server():
 
     @app.route('/poll')
     def poll():
-        nonlocal message_count
+        nonlocal message_count, connection_count
 
         client_id = request.args.get('client_id', 'unknown')
+        connection_count += 1
 
-        # 클라이언트 접속 추적
-        if client_id not in clients:
-            print(f"[서버] 클라이언트 {client_id} 접속")
+        # 매 요청마다 새 연결 표시 (polling 특성)
+        print(f"[서버] 연결 #{connection_count} - 클라이언트 {client_id}")
+
+        # 클라이언트 접속 추적 (타임아웃용)
         clients[client_id] = time.time()
 
         # 30% 확률로 새 메시지 생성 (시뮬레이션)
         if random.random() > 0.7:
             message_count += 1
-            print(f"[서버] 요청 받음 → 메시지 있음 (#{message_count}) → 즉시 응답")
+            print(f"[서버] 요청 받음 → 메시지 있음 (#{message_count}) → 전송\n")
             return jsonify({"has_message": True, "message_num": message_count})
         else:
-            print(f"[서버] 요청 받음 → 메시지 없음 → 즉시 응답 (빈 응답)")
+            print(f"[서버] 요청 받음 → 메시지 없음 → 빈 응답\n")
             return jsonify({"has_message": False})
 
     print("Polling 서버 시작 (localhost:5000)\n")
