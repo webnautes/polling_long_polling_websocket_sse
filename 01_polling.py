@@ -6,7 +6,6 @@ Polling: 클라이언트가 주기적으로 서버에 요청
 
 import sys
 import time
-import random
 import threading
 from datetime import datetime
 
@@ -51,13 +50,13 @@ def run_server():
         # 클라이언트 접속 추적 (타임아웃용)
         clients[client_id] = time.time()
 
-        # 30% 확률로 새 메시지 생성 (시뮬레이션)
-        if random.random() > 0.7:
+        # 5의 배수 요청마다 메시지 생성
+        if connection_count % 5 == 0:
             message_count += 1
-            print(f"[서버] 요청 받음 → 메시지 있음 (#{message_count}) → 전송\n")
+            print(f"[서버] 요청 #{connection_count} (5의 배수) → 메시지 #{message_count} 전송\n")
             return jsonify({"has_message": True, "message_num": message_count})
         else:
-            print(f"[서버] 요청 받음 → 메시지 없음 → 빈 응답\n")
+            print(f"[서버] 요청 #{connection_count} → 메시지 없음 → 빈 응답\n")
             return jsonify({"has_message": False})
 
     print("Polling 서버 시작 (localhost:5000)\n")
