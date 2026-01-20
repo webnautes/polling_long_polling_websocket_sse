@@ -28,17 +28,16 @@ async def run_server():
                 client_number = data['number']
                 print(f"[서버] 클라이언트 #{client_num} → 서버: 숫자 {client_number}")
 
+                # 클라이언트가 보낸 숫자가 3의 배수면 알림 (Push!)
+                if client_number % 3 == 0:
+                    alert = f"🎉 {client_number}은(는) 3의 배수입니다!"
+                    print(f"[서버] 서버 → 클라이언트 #{client_num}: {alert} (서버가 먼저 Push!)")
+                    await ws.send(json.dumps({'type': 'alert', 'msg': alert, 'number': client_number}))
+
                 await asyncio.sleep(5)  # 5초 대기
 
                 # 서버는 1 증가시킨 숫자를 응답
                 server_number = client_number + 1
-
-                # 3의 배수면 서버가 먼저 알림을 보냄 (Push!)
-                if server_number % 3 == 0:
-                    alert = f"🎉 {server_number}은(는) 3의 배수입니다!"
-                    print(f"[서버] 서버 → 클라이언트 #{client_num}: {alert} (서버가 먼저 Push!)")
-                    await ws.send(json.dumps({'type': 'alert', 'msg': alert, 'number': server_number}))
-                    await asyncio.sleep(1)  # 알림 후 잠시 대기
 
                 print(f"[서버] 서버 → 클라이언트 #{client_num}: 숫자 {server_number}")
                 await ws.send(json.dumps({'type': 'number', 'number': server_number}))
