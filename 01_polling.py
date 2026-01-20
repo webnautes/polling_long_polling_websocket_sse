@@ -83,8 +83,8 @@ def run_client():
             else:
                 print(f"[클라이언트] 응답: 메시지 없음")
 
-            print(f"[클라이언트] 2초 대기...\n")
-            time.sleep(2)  # 폴링 간격
+            print(f"[클라이언트] 5초 대기...\n")
+            time.sleep(5)  # 폴링 간격
 
         except requests.exceptions.ConnectionError:
             print("서버 연결 실패")
