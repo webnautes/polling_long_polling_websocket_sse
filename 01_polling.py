@@ -7,26 +7,55 @@ Polling: 클라이언트가 주기적으로 서버에 요청
 import sys
 import time
 import random
+import threading
 from datetime import datetime
 
 def run_server():
-    from flask import Flask, jsonify
+    from flask import Flask, jsonify, request
     import logging
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
     app = Flask(__name__)
-    messages = []
+    message_count = 0
+    clients = {}  # client_id -> last_seen_time
+    client_timeout = 5  # 5초 동안 요청 없으면 접속해제로 간주
+
+    def check_disconnected_clients():
+        """주기적으로 접속해제된 클라이언트 확인"""
+        while True:
+            time.sleep(2)
+            now = time.time()
+            disconnected = []
+            for client_id, last_seen in list(clients.items()):
+                if now - last_seen > client_timeout:
+                    disconnected.append(client_id)
+            for client_id in disconnected:
+                del clients[client_id]
+                print(f"[서버] 클라이언트 {client_id} 접속해제")
+
+    # 백그라운드에서 접속해제 체크
+    checker_thread = threading.Thread(target=check_disconnected_clients, daemon=True)
+    checker_thread.start()
 
     @app.route('/poll')
     def poll():
+        nonlocal message_count
+
+        client_id = request.args.get('client_id', 'unknown')
+
+        # 클라이언트 접속 추적
+        if client_id not in clients:
+            print(f"[서버] 클라이언트 {client_id} 접속")
+        clients[client_id] = time.time()
+
         # 30% 확률로 새 메시지 생성 (시뮬레이션)
         if random.random() > 0.7:
-            messages.append(f"메시지 #{len(messages)+1}")
-            print(f"[서버] 요청 받음 → 새 메시지 있음! → 즉시 응답")
+            message_count += 1
+            print(f"[서버] 요청 받음 → 메시지 있음 (#{message_count}) → 즉시 응답")
+            return jsonify({"has_message": True, "message_num": message_count})
         else:
-            print(f"[서버] 요청 받음 → 새 메시지 없음 → 즉시 응답 (빈 응답)")
-
-        return jsonify(messages[-3:])
+            print(f"[서버] 요청 받음 → 메시지 없음 → 즉시 응답 (빈 응답)")
+            return jsonify({"has_message": False})
 
     print("Polling 서버 시작 (localhost:5000)\n")
     app.run(port=5000)
@@ -34,19 +63,22 @@ def run_server():
 
 def run_client():
     import requests
+    import uuid
 
-    print("Polling 클라이언트 시작\n")
+    client_id = str(uuid.uuid4())[:8]  # 짧은 고유 ID
+    print(f"Polling 클라이언트 시작 (ID: {client_id})\n")
 
     while True:
         try:
             print(f"[클라이언트] 서버에 요청...")
-            res = requests.get('http://localhost:5000/poll', timeout=5)
+            res = requests.get(f'http://localhost:5000/poll?client_id={client_id}', timeout=5)
             data = res.json()
 
-            if data:
-                print(f"[클라이언트] 응답: {data[-1]}")
+            if data.get("has_message"):
+                msg_num = data.get("message_num")
+                print(f"[클라이언트] 응답: 메시지 있음 (#{msg_num})")
             else:
-                print(f"[클라이언트] 응답: (빈 응답)")
+                print(f"[클라이언트] 응답: 메시지 없음")
 
             print(f"[클라이언트] 2초 대기...\n")
             time.sleep(2)  # 폴링 간격
