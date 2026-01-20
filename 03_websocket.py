@@ -2,6 +2,7 @@
 WebSocket: 연결 한 번 수립 후 양방향 실시간 통신
 - 서버 ↔ 클라이언트 양방향 통신
 - 서버가 먼저 클라이언트에게 메시지 전송 가능 (Push)
+- 이 예제: 숫자를 1씩 증가하며 주고받기, 3의 배수면 서버가 먼저 알림
 """
 
 import sys
@@ -13,7 +14,6 @@ async def run_server():
 
     clients = {}  # ws -> client_number
     connection_count = 0
-    message_count = 0
 
     async def handle(ws):
         nonlocal connection_count
@@ -24,37 +24,34 @@ async def run_server():
 
         try:
             async for msg in ws:
-                print(f"[서버] 클라이언트 #{client_num} → 서버: {msg}")
+                data = json.loads(msg)
+                client_number = data['number']
+                print(f"[서버] 클라이언트 #{client_num} → 서버: 숫자 {client_number}")
 
-                # 서버가 클라이언트 메시지에 응답 (양방향!)
-                reply = f"'{msg}'에 대한 서버 응답입니다"
-                await ws.send(json.dumps({'type': 'reply', 'msg': reply}))
-                print(f"[서버] 서버 → 클라이언트 #{client_num}: {reply}")
+                await asyncio.sleep(5)  # 5초 대기
+
+                # 서버는 1 증가시킨 숫자를 응답
+                server_number = client_number + 1
+
+                # 3의 배수면 서버가 먼저 알림을 보냄 (Push!)
+                if server_number % 3 == 0:
+                    alert = f"🎉 {server_number}은(는) 3의 배수입니다!"
+                    print(f"[서버] 서버 → 클라이언트 #{client_num}: {alert} (서버가 먼저 Push!)")
+                    await ws.send(json.dumps({'type': 'alert', 'msg': alert, 'number': server_number}))
+                    await asyncio.sleep(1)  # 알림 후 잠시 대기
+
+                print(f"[서버] 서버 → 클라이언트 #{client_num}: 숫자 {server_number}")
+                await ws.send(json.dumps({'type': 'number', 'number': server_number}))
+
         except:
             pass
         finally:
             del clients[ws]
             print(f"[서버] 클라이언트 #{client_num} 연결 종료")
 
-    # 서버가 먼저 클라이언트에게 메시지 전송 (Push) - 5초 간격
-    async def server_push():
-        nonlocal message_count
-        while True:
-            await asyncio.sleep(5)  # 5초 간격
-            if clients:
-                message_count += 1
-                msg = f"서버가 먼저 보내는 알림 (메시지 #{message_count})"
-                client_nums = list(clients.values())
-                print(f"[서버] 서버 → 클라이언트 {client_nums}: {msg} (클라이언트 요청 없이!)")
-                for ws in list(clients.keys()):
-                    try:
-                        await ws.send(json.dumps({'type': 'push', 'msg': msg, 'msg_num': message_count}))
-                    except:
-                        pass
-
-    print("WebSocket 서버 시작 (localhost:5002)\n")
+    print("WebSocket 서버 시작 (localhost:5002)")
+    print("(숫자 주고받기 + 3의 배수 알림)\n")
     async with websockets.serve(handle, "localhost", 5002):
-        asyncio.create_task(server_push())
         await asyncio.Future()
 
 
@@ -62,30 +59,34 @@ async def run_client():
     import websockets
 
     print("WebSocket 클라이언트 시작")
-    print("메시지를 입력하면 서버와 대화할 수 있습니다\n")
+    print("(숫자 주고받기 + 3의 배수 알림 수신)\n")
 
     async with websockets.connect("ws://localhost:5002") as ws:
-        print("[클라이언트] 서버 연결됨 (연결 1회만 수립)\n")
+        print("[클라이언트] 서버 연결됨\n")
 
-        async def receive():
-            async for msg in ws:
-                data = json.loads(msg)
-                if data['type'] == 'push':
-                    msg_num = data.get('msg_num', '?')
-                    print(f"\n[클라이언트] 서버 → 클라이언트: {data['msg']} (서버가 먼저 보냄!)")
-                else:
-                    print(f"[클라이언트] 서버 → 클라이언트: {data['msg']}")
-                print("보낼 메시지: ", end='', flush=True)
+        current_number = 1  # 클라이언트는 1부터 시작
 
-        async def send():
-            loop = asyncio.get_event_loop()
+        while True:
+            # 클라이언트가 현재 숫자 전송
+            print(f"[클라이언트] 클라이언트 → 서버: 숫자 {current_number}")
+            await ws.send(json.dumps({'number': current_number}))
+
+            # 서버 응답 대기 (알림이 먼저 올 수도 있음)
             while True:
-                msg = await loop.run_in_executor(None, lambda: input("보낼 메시지: "))
-                if msg.strip():
-                    await ws.send(msg)
-                    print(f"[클라이언트] 클라이언트 → 서버: {msg}")
+                msg = await ws.recv()
+                data = json.loads(msg)
 
-        await asyncio.gather(receive(), send())
+                if data['type'] == 'alert':
+                    print(f"[클라이언트] 서버 → 클라이언트: {data['msg']} (서버가 먼저 보냄!)")
+                elif data['type'] == 'number':
+                    server_number = data['number']
+                    print(f"[클라이언트] 서버 → 클라이언트: 숫자 {server_number}")
+
+                    # 클라이언트는 받은 숫자 + 1로 다음 전송 준비
+                    current_number = server_number + 1
+                    print(f"[클라이언트] 5초 대기 후 {current_number} 전송 예정...\n")
+                    await asyncio.sleep(5)
+                    break
 
 
 if __name__ == '__main__':
