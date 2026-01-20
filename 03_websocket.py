@@ -7,42 +7,50 @@ WebSocket: 연결 한 번 수립 후 양방향 실시간 통신
 import sys
 import json
 import asyncio
-import random
 
 async def run_server():
     import websockets
 
-    clients = set()
+    clients = {}  # ws -> client_number
+    connection_count = 0
+    message_count = 0
 
     async def handle(ws):
-        clients.add(ws)
-        print(f"[서버] 클라이언트 연결됨")
+        nonlocal connection_count
+        connection_count += 1
+        client_num = connection_count
+        clients[ws] = client_num
+        print(f"[서버] 클라이언트 #{client_num} 연결됨")
 
         try:
             async for msg in ws:
-                print(f"[서버] 클라이언트 → 서버: {msg}")
+                print(f"[서버] 클라이언트 #{client_num} → 서버: {msg}")
 
                 # 서버가 클라이언트 메시지에 응답 (양방향!)
                 reply = f"'{msg}'에 대한 서버 응답입니다"
                 await ws.send(json.dumps({'type': 'reply', 'msg': reply}))
-                print(f"[서버] 서버 → 클라이언트: {reply}")
+                print(f"[서버] 서버 → 클라이언트 #{client_num}: {reply}")
         except:
             pass
         finally:
-            clients.discard(ws)
-            print(f"[서버] 클라이언트 연결 종료")
+            del clients[ws]
+            print(f"[서버] 클라이언트 #{client_num} 연결 종료")
 
-    # 서버가 먼저 클라이언트에게 메시지 전송 (Push)
+    # 서버가 먼저 클라이언트에게 메시지 전송 (Push) - 5초 간격
     async def server_push():
-        n = 0
+        nonlocal message_count
         while True:
-            await asyncio.sleep(random.uniform(7, 10))
+            await asyncio.sleep(5)  # 5초 간격
             if clients:
-                n += 1
-                msg = f"서버가 먼저 보내는 알림 #{n}"
-                print(f"[서버] 서버 → 클라이언트: {msg} (클라이언트 요청 없이!)")
-                for c in clients:
-                    await c.send(json.dumps({'type': 'push', 'msg': msg}))
+                message_count += 1
+                msg = f"서버가 먼저 보내는 알림 (메시지 #{message_count})"
+                client_nums = list(clients.values())
+                print(f"[서버] 서버 → 클라이언트 {client_nums}: {msg} (클라이언트 요청 없이!)")
+                for ws in list(clients.keys()):
+                    try:
+                        await ws.send(json.dumps({'type': 'push', 'msg': msg, 'msg_num': message_count}))
+                    except:
+                        pass
 
     print("WebSocket 서버 시작 (localhost:5002)\n")
     async with websockets.serve(handle, "localhost", 5002):
@@ -63,6 +71,7 @@ async def run_client():
             async for msg in ws:
                 data = json.loads(msg)
                 if data['type'] == 'push':
+                    msg_num = data.get('msg_num', '?')
                     print(f"\n[클라이언트] 서버 → 클라이언트: {data['msg']} (서버가 먼저 보냄!)")
                 else:
                     print(f"[클라이언트] 서버 → 클라이언트: {data['msg']}")

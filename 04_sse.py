@@ -7,27 +7,39 @@ SSE (Server-Sent Events): 서버 → 클라이언트 단방향 스트림
 import sys
 import time
 import json
-import random
+import threading
 
 def run_server():
-    from flask import Flask, Response
+    from flask import Flask, Response, request
     import logging
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
     app = Flask(__name__)
+    connection_count = 0
+    lock = threading.Lock()
 
     @app.route('/events')
     def events():
+        nonlocal connection_count
+
+        with lock:
+            connection_count += 1
+            client_num = connection_count
+
+        print(f"[서버] 클라이언트 #{client_num} SSE 연결됨")
+
         def generate():
             n = 0
-            while True:
-                n += 1
-                print(f"[서버] 서버 → 클라이언트: 이벤트 #{n}")
-                data = json.dumps({'msg': f'이벤트 #{n}'})
-                yield f"data: {data}\n\n"  # SSE 형식
-                time.sleep(random.uniform(2, 4))
+            try:
+                while True:
+                    n += 1
+                    print(f"[서버] 클라이언트 #{client_num}에게 메시지 #{n} 전송")
+                    data = json.dumps({'msg': f'이벤트 (메시지 #{n})', 'msg_num': n})
+                    yield f"data: {data}\n\n"  # SSE 형식
+                    time.sleep(5)  # 5초 간격
+            except GeneratorExit:
+                print(f"[서버] 클라이언트 #{client_num} SSE 연결 종료")
 
-        print(f"[서버] 클라이언트 SSE 연결됨")
         return Response(generate(), mimetype='text/event-stream')
 
     print("SSE 서버 시작 (localhost:5003)\n")
@@ -49,6 +61,7 @@ def run_client():
                 line = line.decode()
                 if line.startswith('data: '):
                     data = json.loads(line[6:])
+                    msg_num = data.get('msg_num', '?')
                     print(f"[클라이언트] 서버 → 클라이언트: {data['msg']}")
 
     except requests.exceptions.ConnectionError:
