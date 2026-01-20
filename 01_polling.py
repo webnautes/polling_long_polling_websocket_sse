@@ -69,10 +69,12 @@ def run_client():
 
     client_id = str(uuid.uuid4())[:8]  # 짧은 고유 ID
     print(f"Polling 클라이언트 시작 (ID: {client_id})\n")
+    request_count = 0
 
     while True:
         try:
-            print(f"[클라이언트] 서버에 요청...")
+            request_count += 1
+            print(f"[클라이언트] 요청 #{request_count} 전송...")
             res = requests.get(f'http://localhost:5000/poll?client_id={client_id}', timeout=5)
             data = res.json()
 
