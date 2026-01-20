@@ -1,92 +1,64 @@
 """
-SSE (Server-Sent Events) - 서버에서 클라이언트로 단방향 스트림
-
-실행: python 04_sse.py server / python 04_sse.py client
-패키지: pip install flask requests
+SSE (Server-Sent Events): 서버 → 클라이언트 단방향 스트림
+- HTTP 연결 유지하며 서버가 이벤트를 계속 전송
+- 클라이언트 → 서버는 별도 HTTP 요청 필요
 """
 
 import sys
 import time
 import json
 import random
-from datetime import datetime
-
 
 def run_server():
     from flask import Flask, Response
     import logging
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
     app = Flask(__name__)
 
-    def generate_events():
-        event_id = 0
-        yield "retry: 3000\n\n"  # 재연결 간격 설정
-
-        while True:
-            event_id += 1
-            ts = datetime.now().strftime('%H:%M:%S')
-            data = {'id': event_id, 'message': f'이벤트 #{event_id}', 'time': ts}
-
-            event = f"id: {event_id}\n"
-            event += f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-            print(f"[{ts}] 서버 → 클라이언트: 이벤트 #{event_id} (단방향 스트림)")
-            yield event
-
-            time.sleep(random.uniform(2, 5))
-
     @app.route('/events')
-    def stream():
-        ts = datetime.now().strftime('%H:%M:%S')
-        print(f"[{ts}] 클라이언트 SSE 연결")
-        return Response(
-            generate_events(),
-            mimetype='text/event-stream',
-            headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'}
-        )
+    def events():
+        def generate():
+            n = 0
+            while True:
+                n += 1
+                print(f"[서버] 서버 → 클라이언트: 이벤트 #{n}")
+                data = json.dumps({'msg': f'이벤트 #{n}'})
+                yield f"data: {data}\n\n"  # SSE 형식
+                time.sleep(random.uniform(2, 4))
 
-    logging.getLogger('werkzeug').setLevel(logging.ERROR)
-    print("=== SSE 서버 (localhost:5003) ===")
-    print("특징: 서버 → 클라이언트 단방향 이벤트 스트림 (HTTP 기반)\n")
-    app.run(port=5003, debug=False, threaded=True)
+        print(f"[서버] 클라이언트 SSE 연결됨")
+        return Response(generate(), mimetype='text/event-stream')
+
+    print("SSE 서버 시작 (localhost:5003)\n")
+    app.run(port=5003, threaded=True)
 
 
 def run_client():
     import requests
 
-    print("=== SSE 클라이언트 ===")
-    print("특징: 서버로부터 단방향 이벤트 수신 (클라이언트→서버는 별도 HTTP 필요)\n")
+    print("SSE 클라이언트 시작\n")
 
     try:
-        response = requests.get('http://localhost:5003/events', stream=True)
-        ts = datetime.now().strftime('%H:%M:%S')
-        print(f"[{ts}] 서버 연결 완료 (SSE 스트림 수신 중)\n")
+        # stream=True: 응답 완료 전에 데이터 수신 시작
+        res = requests.get('http://localhost:5003/events', stream=True)
+        print("[클라이언트] SSE 연결됨 (서버 이벤트 수신 대기)\n")
 
-        current_data = None
-        for line in response.iter_lines():
+        for line in res.iter_lines():
             if line:
-                line = line.decode('utf-8')
+                line = line.decode()
                 if line.startswith('data: '):
-                    current_data = line[6:]
-            else:
-                if current_data:
-                    data = json.loads(current_data)
-                    ts = datetime.now().strftime('%H:%M:%S')
-                    print(f"[{ts}] 서버 → 클라이언트: \"{data['message']}\"")
-                    current_data = None
+                    data = json.loads(line[6:])
+                    print(f"[클라이언트] 서버 → 클라이언트: {data['msg']}")
 
     except requests.exceptions.ConnectionError:
-        print("서버 연결 실패. 서버가 실행 중인지 확인하세요.")
+        print("서버 연결 실패")
     except KeyboardInterrupt:
-        print("\n종료")
+        pass
 
 
 if __name__ == '__main__':
     if len(sys.argv) != 2 or sys.argv[1] not in ['server', 'client']:
-        print("사용법: python 04_sse.py [server|client]")
+        print("사용법: python 04_sse.py server|client")
         sys.exit(1)
-
-    if sys.argv[1] == 'server':
-        run_server()
-    else:
-        run_client()
+    run_server() if sys.argv[1] == 'server' else run_client()
